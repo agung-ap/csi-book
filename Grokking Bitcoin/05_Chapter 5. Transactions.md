@@ -1,0 +1,717 @@
+# Chapter 5. Transactions
+
+### **This chapter covers**
+
+- Bitcoin, or cookie token, transactions
+- Creating, confirming, and verifying transactions
+- Programming money
+
+The cookie token payments you and your coworkers have been making so far have some serious problems. The worst is that Lisa can steal, which worries some new people. They’re hesitant to use the system if they know Lisa can steal from them.
+
+This chapter will focus mainly on *transactions* ([figure 5.1](/book/grokking-bitcoin/chapter-5/ch05fig01)): pieces of data that formalize how users send payments to Lisa. Transactions replace the old email to Lisa. They’ll be stored as is in the spreadsheet instead of using the current To, From, and CT scheme. This will make it impossible for Lisa to steal other people’s money because anyone can now verify all payments in the spreadsheet.
+
+![Figure 5.1. Bitcoin transactions](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig01_alt.jpg)
+
+In this chapter, we’ll go deep on transactions and explore how they’re *programmable*, meaning they’re flexible as far as what you can do with them. For example, multisignature transactions can require two signatures out of three possible signatures, to spend money shared among three people.
+
+After this chapter, the system will have changed a lot—in how wallets create payments, how Lisa verifies payments, and how payments are stored. Most important, everyone will be able to verify payments in the spreadsheet.
+
+### Problems with the old system
+
+Lisa is performing valuable work. She makes sure no one cheats by verifying digital signatures and checking public key hash (PKH) balances before confirming a payment. She confirms payments by adding them to the cookie token spreadsheet.
+
+But this old approach presents several problems:
+
+- Lisa is getting tired of calculating the balance before approving a payment. The ledger is growing, and each check becomes more time-consuming as new payments are added.
+- If you have two addresses with 5 CT each, you must make two separate payments to pay 10 CT for a cookie. This lays an unnecessary burden on the sender as well as Lisa. It also bloats the spreadsheet with excessive rows.
+- Because the company has grown and some people don’t know Lisa well, trust in her begins to fade. Some people fear Lisa will steal cookie tokens from them in the spreadsheet. Only Lisa can verify signatures because only she sees the emails sent to her. So she *could* increase the CT column of a payment to her or add a row with a false payment from, say, John to Lisa ([figure 5.2](/book/grokking-bitcoin/chapter-5/ch05fig02)). No one could prove Lisa committed fraud. It doesn’t matter that she’s the most trustworthy human on earth. If people don’t know that, they’re going to assume Lisa is as greedy as everyone else.
+
+![Figure 5.2. Bad stuff Lisa could do. She wouldn’t, but she could.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig02_alt.jpg)
+
+Note that Lisa can’t create any new money, other than the 7,200 CT per day as agreed. Also if she tries to steal more than what’s available on a PKH, someone verifying the spreadsheet will notice the total amount of money is becoming too big. Lisa will get busted.
+
+![Minimize trust](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/common-01.jpg)
+
+Minimizing trust between people is what Bitcoin is all about. Transactions bring us one step closer to a trustless system in which everyone can verify everything.
+
+Lisa hates that people distrust her. She knows there’s not much she can do to change her coworkers’ level of trust. An interesting alternative is to *minimize the trust needed*. She concludes that the best way to do this is to make the process super-transparent so everyone can verify payments. At the same time, she’ll improve how she verifies that people don’t spend money they don’t have and how to spend from multiple addresses at the same time. She invents the *cookie token transaction* to solve the three problems outlined previously.
+
+### Paying using a transaction
+
+Transactions will replace both how a user’s wallet sends a payment to Lisa and what’s stored in the spreadsheet. They won’t change how wallets behave from a user’s perspective—the wallet app will *look* exactly the same.
+
+Suppose John wants to buy a cookie in the cafe. He won’t email Lisa the way he’s done so many times before. The wallet software now uses transactions, so his wallet will create a transaction instead, as [figure 5.3](/book/grokking-bitcoin/chapter-5/ch05fig03) shows. The transaction’s purpose is to pay 10 CT to the cafe’s cookie token address.
+
+![Figure 5.3. The payment process is the same for users, but it’s different for Lisa and the spreadsheet.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig03_alt.jpg)
+
+John scans the cafe’s payment URI, and his wallet creates a transaction and asks him to accept it. He clicks OK, and the wallet signs the transaction. John’s wallet then sends the signed transaction as an attachment in an otherwise empty email to Lisa.
+
+The transaction contains information about where to send money. But it also contains information about *what money* to spend by referencing specific “coins” called *unspent transaction outputs* (UTXOs) that John received in previous transactions.
+
+Lisa verifies that the coins spent in the transaction exist and aren’t already spent. She also verifies that the signatures—there might be several in a transaction—are valid. If all checks pass, Lisa confirms the transaction by appending it, exactly as she received it, to the end of the spreadsheet.
+
+Once the transaction hits the spreadsheet, anyone can make the same verification of that transaction that Lisa did. They can do this to verify Lisa doesn’t steal money from someone else or otherwise mess with other people’s money.
+
+In the next three subsections, we’ll dig deeper into the three phases: create, confirm, and verify.
+
+#### Creating the transaction
+
+Let’s dive in and look closer at how John’s transaction is created.
+
+##### John’s transaction
+
+|   | Create (John) |
+| --- | --- |
+|  | Confirm (Lisa) |
+|  | Verify (anyone) |
+
+John’s wallet has created a new transaction ([figure 5.4](/book/grokking-bitcoin/chapter-5/ch05fig04)). It has two *inputs* and two *outputs*. Inputs specify which outputs of previous transactions to spend. Outputs specify where the money goes.
+
+![Figure 5.4. John’s wallet prepares to pay 10 CT for a cookie. He uses two keys with funds to cover the cost. He pays himself the change of 3 CT to a fresh address. The transaction isn’t yet signed.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig04_alt.jpg)
+
+##### Inputs
+
+The inputs specify which transaction outputs to spend. John has two UTXOs, one with 8 CT and one with 5 CT. The unspent outputs belong to two previous transactions, transaction 1 and transaction 2, that paid money to John. Now, John wants to spend these UTXOs.
+
+A transaction input references a previous transaction using the previous transaction’s *transaction ID* (txid). The transaction’s txid is its double SHA256 hash. It’s called a transaction *ID* because this hash is often used to refer to the transaction, as in the case with inputs in [figure 5.4](/book/grokking-bitcoin/chapter-5/ch05fig04).
+
+![](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/f0128-01.jpg)
+
+##### Note
+
+The rationale for using double SHA256 here isn’t entirely clear, but doing so prevents something called a *length-extension attack*. Bitcoin’s creator probably used double SHA256 as a security measure in order to not have to think about these kinds of attacks. For details, see web resource 12 in [appendix C](../Text/kindle_split_023.html#app03).
+
+John’s first input, with index 0, contains
+
+- The txid of transaction 1
+- The index, 1, of the output in transaction 1 to spend
+- An empty placeholder for a signature
+
+His second input, with index 1, contains
+
+- The txid of transaction 2
+- The index, 0, of the output in transaction 2 to spend
+- An empty placeholder for a signature
+
+John will fill in the signatures last, after the transaction is otherwise complete.
+
+##### Outputs
+
+A transaction output contains an amount and a PKH. John’s transaction has two outputs. The output at index 0 pays 10 CT to PKHC, the cafe, for the cookie. The output at index 1 pays 3 CT back to one of John’s own keys, PKH3. We call this *change* because it resembles traditional change, in which you pay $75 with a $100 bill and get $25 back: John pays with 13 CT and gets 3 CT back to his change address, PKH3. Change is needed because you can’t partly spend a transaction output. You either spend it completely, or you don’t spend it.
+
+The outputs and inputs are a bit more advanced than just specifying a PKH in an output and a signature in the input. In reality, the output contains a computer program that will verify the signature in the spending input. We’ll talk more about this later.
+
+![Transaction fee](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/common-01.jpg)
+
+Normally, you need to pay a transaction fee for the Bitcoin network to process your transaction.
+
+For a transaction to be valid, the sum of the input amounts must be greater than or equal to the sum of the output amounts. The difference, if any, is called a *transaction fee*, which we’ll discuss in [chapter 7](/book/grokking-bitcoin/chapter-7/ch07). For now, John pays no transaction fee, so his output sum matches the input sum exactly.
+
+The transaction is now created, but it isn’t yet signed. Anyone could have created this transaction because it’s based completely on public information. The inputs just refer to transactions in the spreadsheet and indexes within those transactions. But only John will be able to sign this transaction, because only he has the private keys corresponding to PKH1 and PKH2.
+
+##### Signing the transaction
+
+John clicks OK in his wallet to approve signing the transaction. The wallet now needs to make two signatures, one for PKH1 and one for PKH2. This is because John must prove he has both the private key for PKH1 and the private key for PKH2. See [figure 5.5](/book/grokking-bitcoin/chapter-5/ch05fig05).
+
+![Figure 5.5. John’s wallet signs the transaction. Each input gets its own signature. The public key is also needed in the inputs because anyone should be able to verify the signature.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig05_alt.jpg)
+
+Each input needs to be signed individually. The private key corresponding to PKH1 must be used to sign the input at index 0 because that input spends money addressed to PKH1. Similarly, the private key corresponding to PKH2 must be used for the signature of the input at index 1 because it spends money addressed to PKH2.
+
+Each signature will commit to the entire transaction, which means the signing algorithm will hash the entire transaction, excluding signatures. If anything changes in the transaction, any signature made for this transaction will become invalid.
+
+To make verification easier, you sign a cleaned version of the transaction, which means there are no signatures in any of the inputs. You can’t put a signature in input 0 and *then* sign input 1. Verification would be difficult if the person verifying didn’t know in what order the signatures were made. If you make *all* signatures from a cleaned transaction and *then* add all signatures to it, it doesn’t matter in what order the signatures were made.
+
+When the wallet has made all signatures, it adds them to the transaction. But one piece is still missing. How can someone verifying the transaction—for example, the cafe—know which public key to use to verify a signature? The cafe can see only the PKH in the spent output and the signature in the spending input. It can’t get the public key from the PKH because cryptographic hashes are one-way functions, remember? John’s wallet must explicitly add the corresponding public key to the input. The signature in input 0 that spends money from PKH1 needs to be verified with the public key from which PKH1 was generated. Similarly, input 1 gets the public key corresponding to PKH2.
+
+##### John’s transaction
+
+|   | Create (John) |
+| --- | --- |
+|  | Confirm (Lisa) |
+|  | Verify (anyone) |
+
+#### Lisa confirms the transaction
+
+The transaction is ready to be sent to Lisa. John’s wallet sends it as an attachment in an email. Lisa picks up the transaction and verifies that:
+
+- The transaction spends outputs of transactions that actually exist in the spreadsheet and that they aren’t already spent by some other transaction in the spreadsheet.
+- The total value of the transaction outputs doesn’t exceed the total value of the transaction inputs. Otherwise, the transaction would create new money out of thin air.
+- The signatures are correct.
+
+Lisa doesn’t have to calculate the PKH balance anymore, but she needs to check that the spent output exists and isn’t already spent.
+
+How does she check that an output of a transaction is unspent? Doesn’t she have to search the spreadsheet to look for transactions that spend this output? Yes, she does. This seems about as cumbersome as searching through the spreadsheet to calculate balances. Don’t worry: Lisa has a plan.
+
+![UTXO set](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/common-01.jpg)
+
+All nodes in the Bitcoin network maintain a private UTXO set to speed up transaction verification.
+
+##### Unspent transaction output set
+
+To make the unspent checks easier, she creates a new, private database that she calls the *UTXO set* ([figure 5.6](/book/grokking-bitcoin/chapter-5/ch05fig06)). It’s a set of all UTXOs.
+
+![Figure 5.6. Lisa verifies that John doesn’t double spend by using her UTXO set.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig06_alt.jpg)
+
+An entry in the UTXO set consists of a txid, an index (idx), and the actual transaction output. Lisa keeps her UTXO set updated while verifying transactions. Before Lisa adds John’s transaction to the spreadsheet, she makes sure all outputs that the transaction spends are in the UTXO set. If not, then John is trying to spend money that either never existed in the spreadsheet or is already spent (usually referred to as a *double-spend attempt*).
+
+![Double spend](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/common-02.jpg)
+
+*Double spend* means to spend the same output twice. Lisa can prevent double spends by consulting her UTXO set.
+
+For each input in John’s transaction, Lisa uses her UTXO set to look up the txid and the output index. If all spent outputs are present in the UTXO set, no double-spend attempt or spending of nonexistent coins is detected. In this case, Lisa finds both outputs in her UTXO set and starts verifying signatures. Lisa needs to verify the signatures of both of John’s transaction inputs.
+
+She grabs the PKH from the output spent by the first input and verifies that it matches the hash of the public key in the input ([figure 5.7](/book/grokking-bitcoin/chapter-5/ch05fig07)). She verifies the signature in the input using the public key, the signature, and the transaction, and then verifies the second input’s signature the same way. Both are good.
+
+![Figure 5.7. Lisa verifies the first signature of John’s transaction.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig07_alt.jpg)
+
+Lisa then adds the confirmed transaction to the spreadsheet. She must remove the newly spent outputs from the UTXO set and add the outputs of John’s transaction to it ([figure 5.8](/book/grokking-bitcoin/chapter-5/ch05fig08)). This is how she keeps the UTXO set updated to reflect the transaction spreadsheet’s contents.
+
+![Figure 5.8. Lisa adds the transaction to the spreadsheet and removes the spent outputs from the UTXO set.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig08_alt.jpg)
+
+![Rebuilding the UTXO set](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/common-02.jpg)
+
+The UTXO set is built from the transactions in the spreadsheet only. It can be re-created at any time, notably by anyone with read access to the spreadsheet.
+
+Lisa keeps the UTXO set up to date by updating it as [figure 5.8](/book/grokking-bitcoin/chapter-5/ch05fig08) illustrates for every incoming transaction. If she loses the UTXO set, she can re-create it from the spreadsheet by starting with an empty UTXO set and reapplying all transactions in the spreadsheet to it, one by one.
+
+It isn’t only Lisa who can create a UTXO set. Anyone with access to the spreadsheet can now do the same. This is important in later chapters, when we replace Lisa with multiple people doing her job. It’s also important for people who just want to verify the spreadsheet to convince themselves the information in it is correct.
+
+#### Anyone verifies the transaction
+
+Now that John’s transaction is stored in the spreadsheet exactly as he created it, anyone with read access can verify it. Anyone can create a *private* UTXO set, work through all the transactions, and end up with the exact same UTXO set as Lisa.
+
+##### John’s transaction
+
+|   | Create (John) |
+| --- | --- |
+|  | Confirm (Lisa) |
+|  | Verify (anyone) |
+
+**This means anyone can make the same checks that Lisa does. They can verify that Lisa is doing her job. These verifiers are important to the system because they make sure updates to the spreadsheet obey the agreed-on rules.**
+
+In Bitcoin, these verifiers are called *full nodes*. Lisa is also a full node (a verifier), but she does more than a full node—she updates the spreadsheet. A full node is also called a *verifying node* or, more casually, a *node* in Bitcoin.
+
+##### John’s transaction
+
+|   | Create (John) |
+| --- | --- |
+|  | Confirm (Lisa) |
+|  | Verify (anyone) |
+
+Lisa can no longer steal someone else’s money, because doing so would make the spreadsheet invalid. For example, suppose she tried to change the output recipient of John’s transaction from PKHC to PKHL. She effectively tries to steal 10 CT from the cafe ([figure 5.9](/book/grokking-bitcoin/chapter-5/ch05fig09)).
+
+![Figure 5.9. Lisa can no longer steal someone else’s money. If she does, the signatures will become invalid and disclose her immoral act.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig09_alt.jpg)
+
+Because Lisa has changed the contents of John’s transaction, that transaction’s signatures will no longer be valid. Anyone with access to the spreadsheet can notice this because everything is super-transparent.
+
+##### Security consequences of public signatures
+
+The good thing about public signatures is that anyone can verify all transactions. But there’s a slight drawback.
+
+Remember in [chapter 3](/book/grokking-bitcoin/chapter-3/ch03), when we introduced PKHs? When you used PKHs, the public key wasn’t revealed in the spreadsheet. This protected money with two security layers: the public-key derivation function and a cryptographic hash function (SHA256 + RIPEMD160). If the public key was revealed somehow, the private key would still be protected by the public-key derivation function. It was like a belt and suspenders type of thing.
+
+But using transactions, the public key is revealed in the spending transaction’s input when an output is spent. Look at John’s transaction again in [figure 5.10](/book/grokking-bitcoin/chapter-5/ch05fig10).
+
+![Figure 5.10. The input reveals the public key. We made an extra effort to avoid this in chapter 3.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig10_alt.jpg)
+
+The input contains the public key. But it only reveals the public key once the output is spent. This brings up an important point: don’t reuse addresses! If John has other unspent outputs to PKH1, those outputs are now less secure because they’re no longer protected by the cryptographic hash function—only by the public-key derivation function.
+
+![Don’t reuse addresses](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/common-02.jpg)
+
+Bitcoin addresses shouldn’t be reused. Reusing addresses degrades both security and privacy.
+
+Not only does address reuse degrade the security of your private keys, it also degrades your privacy, as discussed in [chapter 3](/book/grokking-bitcoin/chapter-3/ch03). Suppose again that John has other outputs to PKH1. If Acme Insurances forces the cafe to reveal that it was John who bought the cookie, Acme would also know that all outputs to PKH1 belong to John. This goes for change outputs, too.
+
+Luckily, the wallets will automate key creation for you, so you usually don’t have to worry about key reuse. Most Bitcoin wallets on the market today use unique addresses for all incoming payments.
+
+#### Account-based and value-based systems
+
+Let’s reflect on the changes we’ve made. We’ve moved from an *account-based* system to a *value-based* system.
+
+An account-based system keeps track of how much money each account has. This is the type of system we had before this chapter. Lisa had to calculate the balance of a PKH before deciding whether to allow a payment.
+
+A value-based system keeps track of “coins” instead. In this chapter, Lisa needs to verify that the specific coins (UTXOs) exist before deciding whether to allow the payment. She doesn’t have to verify the balance of any PKH. Bitcoin is also a value-based system.
+
+### Script
+
+I haven’t been totally honest about what a transaction contains. A transaction’s output doesn’t contain a PKH, but part of a small computer program that *contains* a PKH. This part of the program is called a *pubkey script*. The input that spends the output contains the other part of this program. This other part, the signature and the public key in John’s transaction, is called a *signature script* ([figure 5.11](/book/grokking-bitcoin/chapter-5/ch05fig11)).
+
+![Figure 5.11. The signature script is the first part of a program. The pubkey script in the spent output is the second part. If the complete program results in OK, then the payment is authorized to spend the output.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig11_alt.jpg)
+
+This tiny program, written in a programming language called Script, contains the instructions to Lisa on how to verify that the spending transaction is authentic. If Lisa performs all the instructions in the program without errors, and the end result is `OK`, then the transaction is authentic.
+
+The ability to write a computer program inside a transaction is useful for various use cases. We’ll cover several use cases of customized programs throughout this book.
+
+Suppose Lisa wants to verify input 0 of John’s transaction. She’ll run this program from top to bottom. A *stack* is used to keep track of intermediate calculation results. This stack is like a pile of stuff. You can add stuff on top of the stack, and you can take stuff off the top.
+
+Let’s start: look at [figure 5.12](/book/grokking-bitcoin/chapter-5/ch05fig12). The first (top) item in the program is a signature, which is just data. When you encounter ordinary data, you’ll put it on the stack. Lisa puts the signature on the previously empty stack. Then she encounters a public key, which is also just data. She puts that on the stack as well. The stack now contains a signature and a public key, with the public key on top.
+
+![Figure 5.12. Adding a signature and a public key to the stack](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig12_alt.jpg)
+
+The next item in the program is `OP_DUP` ([figure 5.13](/book/grokking-bitcoin/chapter-5/ch05fig13)). This isn’t just data—this is an operator. An operator makes calculations based on items on the stack and, in some cases, the transaction being verified. This specific operator is simple: it means “Copy the top item on the stack (but keep it on the stack), and put the copy on top.” Lisa follows orders and copies the public key on the stack. You now have two public keys and a signature on the stack.
+
+![Figure 5.13. Copying the public key on the stack, and adding a PKH](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig13_alt.jpg)
+
+The next item is also an operator, `OP_HASH160` (also shown in [figure 5.13](/book/grokking-bitcoin/chapter-5/ch05fig13)). This means “Take the top item off the stack and hash it using SHA256+RIPEMD160, and put the result on the stack.”
+
+Cool. Lisa takes the top public key from the stack, hashes it, and puts the resulting PKH on top of the stack. This happens to be John’s PKH1 because it was John’s public key that Lisa hashed.
+
+The next item is just data ([figure 5.14](/book/grokking-bitcoin/chapter-5/ch05fig14)): it’s PKH1, which is the rightful recipient of the 8 CT. Lisa puts PKH1 on the stack.
+
+![Figure 5.14. Adding PKH1 to the stack and comparing the two PKH items](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig14_alt.jpg)
+
+Next up is another operator, `OP_EQUALVERIFY`. This means “Take the top two items from the stack and compare them. If they’re equal, continue to the next program instruction; otherwise, quit the program with an error.” Lisa takes the two PKH items from the top of the stack and verifies that they’re equal. They *are* equal, which means the public key John has provided in his transaction’s signature script matches the PKH that was set as the recipient in the output.
+
+![](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/f0138-01.jpg)
+
+The last operator, `OP_CHECKSIG` ([Figure 5.15](/book/grokking-bitcoin/chapter-5/ch05fig15)), means “Verify that the top public key on the stack and the signature that’s next on the stack correctly sign the transaction. Put `true` or `false` on top of the stack depending on the verification outcome.” Lisa takes John’s transaction and cleans out all the signature script from all inputs. She uses the top two items from the stack, which are John’s public key and his signature, to verify that the signature signs the cleaned transaction. When John signed this transaction, he did so without any signature data in the inputs. This is why Lisa must first clean out the signature script data from the transaction before verifying the signature. The signature was good, so Lisa puts `true`, meaning `OK`, back on the stack.
+
+![Figure 5.15. Verifying the signature using John’s transaction and the rest of the items from the stack](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig15_alt.jpg)
+
+Look, the program is empty! Nothing is left to do. After running a program, the top item on the stack reveals whether the spending of the output is authentic. If `true`—`OK`—then the spending is authorized. If `false`—`not OK`—then the transaction must be declined. Lisa looks at the top item on the stack, and there’s an `OK`. Lisa now knows that John’s input with index 0 is good ([figure 5.16](/book/grokking-bitcoin/chapter-5/ch05fig16)).
+
+![Figure 5.16. The first input is verified.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig16_alt.jpg)
+
+Lisa does the same checks for the other input, with index 1, of John’s transaction. If this program also ends with `OK`, then the entire transaction is valid, and she can add the transaction to the spreadsheet.
+
+#### Why use a program?
+
+**The pubkey script part of the program stipulates exactly what the spending transaction needs to provide to spend the output. The only way to spend an output is to provide a signature script that makes the program finish with an `OK` on top of the stack.**
+
+In the example I just presented, the only acceptable signature script is a valid signature followed by the public key corresponding to the PKH in the pubkey script.
+
+Using a programming language, Script, in the transactions makes them very flexible. You’ll see several different types of Script programs throughout this book. If the transactions didn’t use a programming language, all use cases would have to be invented up front. The Script language lets people come up with new use cases as they please.
+
+![Operators](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/common-01.jpg)
+
+A lot of useful operators can be used to create all kinds of fancy programs. Check out web resource 13 in [appendix C](/book/grokking-bitcoin/appendix-c/app03) for a complete list.
+
+I’ve already mentioned that “pay to PKH” isn’t the only way to pay. You can write any program in the pubkey script. For example, you can write a pubkey script that ends with `OK` only if the signature script provides two numbers whose sum is 10. Or, you can write a program that ends with `OK` only if the signature script contains the SHA256 pre-image of a hash. Consider this example:
+
+```
+OP_SHA256
+334d016f755cd6dc58c53a86e183882f8ec14f52fb05345887c8a5edd42c87b7
+OP_EQUAL
+```
+
+This will allow anyone who knows an input to SHA256 that results in the hash `334d016f...d42c87b7` to spend the output. You happen to know from [chapter 2](/book/grokking-bitcoin/chapter-2/ch02) that the text “Hello!” will give this specific output. Suppose your signature script is
+
+```
+Hello!
+```
+
+Run the program to convince yourself that it works and that all signature scripts that don’t contain a correct pre-image fail.
+
+![Odd names](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/common-01.jpg)
+
+Bitcoin developers commonly use the term *scriptPubKey* for the pubkey script and *scriptSig* for the signature script because that’s how they’re named in the Bitcoin Core source code.
+
+#### Why signature script and pubkey script?
+
+You might wonder why we call the output script part *pubkey script* when it usually doesn’t contain a public key. Likewise, the input script is called *signature script*, but it doesn’t only contain a signature.
+
+The pubkey script in Bitcoin transactions used to contain an actual public key, and the signature script used to contain the signature only. It was more straightforward then. A typical pubkey script looked like this
+
+```
+<public key> OP_CHECKSIG
+```
+
+and the signature script like this:
+
+```
+<signature>
+```
+
+Things have changed since then, but the names *signature script* and *pubkey script* remain. Most developers today look at this more abstractly: the pubkey script can be regarded as a public key, and the signature script can be regarded as a signature, but not necessarily ordinary public keys and signatures. In a normal payment today, the “public key” is the script that needs to be satisfied by the “signature,” the signature script. Of course, the “public key” here contains some operators and a PKH, but we can still view it as a public key on a conceptual level. The same goes for the signature script, which we can view as a signature on a conceptual level.
+
+![Where were we?](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/common-09.jpg)
+
+This chapter covers most aspects of transactions. [Figure 5.17](/book/grokking-bitcoin/chapter-5/ch05fig17) is a reminder from [chapter 1](/book/grokking-bitcoin/chapter-1/ch01) of how a typical transaction is sent.
+
+![Figure 5.17. This chapter covers transactions. Right now, we’re exploring different ways to authenticate transactions.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig17.jpg)
+
+We’ve gone through the anatomy of the transaction and are now discussing different ways to authenticate, or “sign,” transactions.
+
+### Fancy payment types
+
+John’s transaction just spent two *pay-to-public-key-hash* (p2pkh) outputs. But as noted earlier, other payment types are possible—for example, pay-to-hash, where you pay to a SHA256 hash. To spend this output, you need to provide the hash’s pre-image in the spending input’s signature script. We’ll explore some more interesting and useful ways to authenticate transactions.
+
+##### Pay to hash
+
+```
+OP_SHA256
+334d...87b7
+OP_EQUAL
+```
+
+#### Multiple signatures
+
+In p2pkh, the recipient generates a cookie token address that’s handed over to the sender. The sender then makes a payment to that address.
+
+But what if the recipient would like their money secured by something other than a single private key? Suppose Faiza, Ellen, and John want to raise money for charity from their coworkers.
+
+![](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/f0141-01.jpg)
+
+They could use a normal p2pkh address that their supporters donate cookie tokens to. They could let, say, Faiza have control over the private key, so only she could spend the funds. This approach has a few problems:
+
+1. If Faiza dies, the money might be lost forever. Ellen and John won’t be able to recover the funds.
+1. If Faiza is sloppy with backup, the money might get lost. Again, no one will be able to recover the funds.
+1. If Faiza is sloppy with her private key security, the money might get stolen.
+1. Faiza might run away with the money.
+
+A lot of risks seem to be inherent in this setup, but what if Faiza gives the private key to her two charity partners? Then, all partners can spend the money. This will solve problems 1 and 2, but problems 3 and 4 would be worse because now any of the three partners might be sloppy with private-key security or run away with the money.
+
+This organization consists of three people. It would be better if these three people could *share the responsibility and the power over the money* somehow. Thanks to the Script programming language, they can accomplish this.
+
+They can create one private key each and demand that two of the three keys must sign the transaction to spend the charity funds. ([figure 5.18](/book/grokking-bitcoin/chapter-5/ch05fig18)).
+
+![Figure 5.18. Multisignature setup between Faiza, Ellen, and John. Two of the three keys are needed to spend money.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig18_alt.jpg)
+
+This brings some good properties to the charity fundraising account:
+
+- If one of the three keys is stolen, the thief can’t steal the money.
+- If one of the three keys is lost due to sloppy backups or death, then the other two keys are enough to spend the money.
+- Out of the three partners, no single person can singlehandedly run away with the money.
+
+![Bug](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/common-01.jpg)
+
+There is a bug in Bitcoin software that causes `OP_CHECKMULTISIG` to need an extra dummy item first in the signature script.
+
+[Figure 5.19](/book/grokking-bitcoin/chapter-5/ch05fig19) shows a script program that enforces the two-of-three rule.
+
+![Figure 5.19. A program that enforces two signatures out of three possible keys. The secret sauce is OP_CHECKMULTISIG.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig19.jpg)
+
+The `OP_CHECKMULTISIG` operator instructs Lisa to verify that the two signatures in the signature script are made with the keys in the pubkey script. Lisa runs the program in [figure 5.20](/book/grokking-bitcoin/chapter-5/ch05fig20).
+
+![Figure 5.20. Moving some data items to the stack](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig20_alt.jpg)
+
+The top eight data items in the program are put on the stack. Then the only operator, `OP_CHECKMULTISIG`, runs, as illustrated in [figure 5.21](/book/grokking-bitcoin/chapter-5/ch05fig21). `OP_CHECKMULTISIG` takes a number, `3` in this case, from the stack and then expects that number of public keys from the stack followed by another number. This second number dictates how many signatures are needed to spend the money. In this case, the number is `2`. Then, the operator takes the expected number of signatures from the stack, followed by the dummy mentioned earlier. You don’t use the dummy item.
+
+![Figure 5.21. Executing the OP_CHECKMULTISIG operator, which results in OK this time](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig21_alt.jpg)
+
+`OP_CHECKMULTISIG` uses all this information and the transaction to determine whether enough signatures are made and verifies those signatures. If everything is `OK`, it puts `OK` back on the stack. This is where the program ends. Because the top item on the stack is `OK`, the output spending is authorized.
+
+A coworker who wants to donate cookie tokens to the charity needs to get their wallet to write the pubkey script in [Figure 5.19](/book/grokking-bitcoin/chapter-5/ch05fig19) into the donation transaction’s output. This presents a few problems:
+
+- The coworker’s wallet knows how to make only p2pkh outputs. The wallet must be modified to understand multisignature outputs and include a user interface to make this kind of output understandable to users.
+- A sender usually doesn’t need to know how the recipient’s money is protected. The sender doesn’t care if it’s multisignature, p2pkh, or anything else. They just want to pay.
+- Transactions usually need to pay a fee to be processed (more on this in [chapter 7](/book/grokking-bitcoin/chapter-7/ch07)). This fee generally depends on how big the transaction is, in bytes. A big pubkey script causes the sender to pay a higher fee. This isn’t fair because it’s the recipient who wants to use this fancy, expensive feature. The recipient, not the sender, should pay for this luxury.
+
+![](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/f0145-01.jpg)
+
+You can fix all this with a small change to how the programs are run. Some developers among your coworkers invent something called *pay-to-script-hash* (p2sh).
+
+#### Pay-to-script-hash
+
+We’ve discussed how p2pkh hides the public key from the sender, who gets a hash of the public key to pay to instead of the public key itself.
+
+p2sh takes this idea even further—it hides the script program. Instead of giving a big, complicated pubkey script to the sender, you give them just the hash of the script. The sender then makes a payment to that hash and leaves it up to the recipient to provide the script later, when the recipient wants to spend the money.
+
+![BIP16](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/common-01.jpg)
+
+This type of payment was introduced in 2012 in BIP16.
+
+Suppose again that Faiza, Ellen, and John want to raise money for charity, and they want a multisignature setup to protect their money ([figure 5.22](/book/grokking-bitcoin/chapter-5/ch05fig22)).
+
+![Figure 5.22. Overview of p2sh. The pubkey script is simple. The signature script is special because it contains a data item that contains a program.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig22_alt.jpg)
+
+To verify this transaction in full, you need new software. We’ll talk about how this new software verifies this transaction in a moment. First, let’s see how the old software would handle this transaction.
+
+##### Old software
+
+What if the person verifying the transaction hasn’t upgraded their software to the bleeding-edge version that supports verifying p2sh payments? The developers made this forward-compatible, meaning old software won’t reject these new transactions.
+
+![Why verify?](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/common-02.jpg)
+
+The cafe isn’t involved in this transaction, so why would the cafe want to verify it? The cafe wants to know whether Lisa is doing her job. It’s in the cafe’s interest to know if something fishy is going on.
+
+Let’s pretend the cafe runs old software to verify this transaction in the spreadsheet ([figure 5.23](/book/grokking-bitcoin/chapter-5/ch05fig23)). Old software will do what it’s always been doing—push the stuff in the signature script and then run the pubkey script.
+
+![Figure 5.23. Verifying the p2sh transaction using old software](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig23_alt.jpg)
+
+When the program is finished, the top item on the stack is `true`, or `OK`. This means the payment is valid according to this old software.
+
+You might recognize the pubkey script from the earlier example, when you could pay money to a pre-image of a hash. That’s what happened here, too, but with a different cryptographic hash function.
+
+The old software interprets this program as a payment to a hash. Whoever can show a pre-image of this hash gets the money. The actual multisignature program contained in the redeem script never runs.
+
+##### New software
+
+Suppose the cafe just upgraded its software and wants to verify this transaction again. Let’s see how that happens.
+
+The new software looks at the pubkey script to determine if this transaction is spending a p2sh output. It looks for this pattern:
+
+```
+OP_HASH160
+20 byte hash
+OP_EQUAL
+```
+
+If the pubkey script has this exact pattern—the p2sh pattern—the software will treat the program differently. First, it will perform the same seven steps as the old software, shown in [figure 5.23](/book/grokking-bitcoin/chapter-5/ch05fig23), but it will save the stack after step 2. Let’s call this the *saved stack*. If the first seven steps result in `OK`, then the stack is replaced by the saved stack; and the top item, `redeemScript`, is taken off the stack ([figure 5.24](/book/grokking-bitcoin/chapter-5/ch05fig24)).
+
+![Figure 5.24. The stack is replaced by the saved stack, and redeemScript is taken off the stack.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig24_alt.jpg)
+
+`redeemScript` is a data item that contains a program, as previously described. This program is now entered into the program area and begins to execute. It executes from now on as if it was an old-style payment ([figure 5.25](/book/grokking-bitcoin/chapter-5/ch05fig25)).
+
+![Figure 5.25. Executing the program contained in the redeem script](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig25_alt.jpg)
+
+It’s important for Lisa that she runs the latest software. If Lisa ran old software, she would verify only that the redeem script hash matches the script hash in the pubkey script. Anyone who happened to know the redeem script—for example, Faiza—would be able to take the money in the spreadsheet. Lisa would gladly confirm that transaction. This would cause problems if any verifying nodes ran new software. Those nodes wouldn’t accept the transaction in the spreadsheet because it’s invalid according to the new rules. The entire spreadsheet would then be invalid and unacceptable for new nodes from that point forward. We’ll discuss this situation more in [chapter 11](/book/grokking-bitcoin/chapter-11/ch11).
+
+##### Pay-to-script-hash addresses
+
+Faiza, Ellen, and John have created their two-of-three multisignature redeem script:
+
+```
+2
+022f52f2868dfc7ba9f17d2ee3ea2669f1fea7aea3df6d0cb7e31ea1df284bdaec
+023d01ba1b7a1a2b84fc0f45a8a3a36cc7440500f99c797f084f966444db7baeee
+02b0c907f0876485798fc1a8e15e9ddabae0858b49236ab3b1330f2cbadf854ee8
+3
+OP_CHECKMULTISIG
+```
+
+They now want people to pay to the redeem script’s SHA256+RIPEMD160 hash:
+
+```
+04e214163b3b927c3d2058171dd66ff6780f8708
+```
+
+How do Faiza, Ellen, and John ask people to pay them? What do they print on the flyers so coworkers can pay to their script hash? Let’s look at a couple of their options:
+
+- Print the script hash as is, and inform coworkers that this is a hash of a redeem script. This would expose the coworkers to the unnecessary risk of typing errors, just as with payments to raw PKHs, as discussed in [chapter 3](/book/grokking-bitcoin/chapter-3/ch03).
+- Base58check-encode the script hash just as in [chapter 3](/book/grokking-bitcoin/chapter-3/ch03), which would generate an address like `1SpXyW...RMmEMZ`. If this address was printed on the flyers, they would also need to inform users that they must create a p2sh output instead of a normal p2pkh.
+
+![](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/f0150-01.jpg)
+
+In both cases, if the donor erroneously makes a p2pkh payment using the printed hash or address, no one can spend the money because no private key corresponds to this false PKH.
+
+These two options seem neither safe nor practical. Instead, let’s introduce a new address format for p2sh, the *p2sh address* ([figure 5.26](/book/grokking-bitcoin/chapter-5/ch05fig26)). This format is similar to normal p2pkh addresses. It uses the base58check encoding scheme, just as normal addresses did.
+
+![Figure 5.26. Creating a p2sh address. The difference from normal addresses is the version, which is 05 for p2sh addresses instead of 00.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig26_alt.jpg)
+
+This process is almost the same as for p2pkh addresses. The only difference is that the version is `05` instead of `00`. This will cause the address to begin with a `3` instead of a `1`.
+
+Because of this change and how base58 works—using integer division by 58 successively—the last remainder will always be 2. If you’re interested, [figure 5.27](/book/grokking-bitcoin/chapter-5/ch05fig27) provides the base58 encoding of the versioned and checksummed script hash of Faiza’s, Ellen’s, and John’s redeem script.
+
+![Figure 5.27. Encoding a versioned and checksummed script hash with base58. The result will always start with the character 3.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig27_alt.jpg)
+
+This last remainder `2` will translate to `3` in base58’s character-lookup table. This `3` character will become the first character when the base58 process performs the reversing step. This causes all p2sh addresses to start with a `3`. This is how users identify them as p2sh addresses and not, for example, p2pkh addresses.
+
+![](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/f0151-01.jpg)
+
+Faiza, Ellen, and John can now print `328qTX...wrB2ag` on their flyer. When a coworker scans this flyer’s QR code, their wallet will recognize the address as a p2sh address because it starts with a `3`. The wallet will base58check-decode the address and create a proper p2sh output:
+
+```
+OP_HASH160
+04e214163b3b927c3d2058171dd66ff6780f8708
+OP_EQUAL
+```
+
+This concludes our discussion of programmable transactions. You’ve learned that transactions can express a lot of different rules for how to spend money. Note that you can’t constrain where spent money goes, only what’s needed in the input to spend the money. The pubkey script makes the rules for what’s required in the signature script. Later in the book, we’ll revisit transactions to talk about more fancy stuff you can do with them, such as make spending impossible until a certain future date.
+
+### More stuff in transactions
+
+We still haven’t covered all the contents of a transaction. A few more pieces of information belong in transactions, including version, lock time, and sequence numbers:
+
+- *Version*—Each transaction has a version. As of this writing, there are two versions: 1 and 2.
+- *Sequence number*—A 4-byte number on each input. For most transactions, this is set to its maximum value `ffffffff`. This is an old, disabled feature that’s being repurposed for new functionality.
+- *Lock time*—A point in time before which the transaction can’t be added to the spreadsheet. If the lock time is 0, the transaction is always allowed to be added to the spreadsheet.
+
+![](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/f0152-01_alt.jpg)
+
+I include this sparse information here for completeness. We’ll discuss these features more in [chapter 9](/book/grokking-bitcoin/chapter-9/ch09), when you know more about Bitcoin’s fundamentals.
+
+### Rewards and coin creation
+
+You might be wondering where all the cookie tokens come from in the first place. Remember in [chapter 2](/book/grokking-bitcoin/chapter-2/ch02), when I described how Lisa gets rewarded with 7,200 CT daily? She would insert a new row in the spreadsheet every day, paying 7,200 new CT to herself.
+
+| From | To | Amount CT |
+| --- | --- | --- |
+| ... | ... | ... |
+| Cafe | Company | 10,000 |
+| Alice | Cafe | 10 |
+| NEW | Lisa | 7,200 |
+
+Now she still rewards herself with 7,200 CT per day, but in a slightly different way. Every day she adds a special transaction to the spreadsheet called a *coinbase transaction* ([figure 5.28](/book/grokking-bitcoin/chapter-5/ch05fig28)).
+
+![Figure 5.28. Lisa rewards herself every day with a coinbase transaction.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig28_alt.jpg)
+
+![Rewards](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/common-01.jpg)
+
+Rewards in Bitcoin are paid roughly every 10 minutes, using coinbase transactions, to the nodes securing the Bitcoin blockchain. I’ll cover this in [chapter 7](/book/grokking-bitcoin/chapter-7/ch07).
+
+The coinbase transaction’s input is called the *coinbase*. The only way to create new coins is to add a coinbase transaction to the spreadsheet. New coins are created as rewards to Lisa for performing her valuable work.
+
+**All transactions can be traced back to one or more coinbase transactions by following the txid references in transaction inputs. The transactions form a *transaction graph* ([figure 5.29](/book/grokking-bitcoin/chapter-5/ch05fig29)). They’re interconnected through the txids**.
+
+![Figure 5.29. The transaction graph. All transactions descend from one or more coinbase transactions.](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/05fig29_alt.jpg)
+
+John’s transaction stems from four different coinbase transactions. To verify John’s transaction, you must follow all txids from John’s transaction and verify all the transactions along the way until you’ve reached the four coinbase transactions. This is what the UTXO set helps verifiers with. It keeps track of all already-verified UTXOs. The verifiers only have to follow the txids (usually only one step) until it reaches an output that’s in the UTXO set.
+
+The coinbase transactions must also be verified so there is exactly one coinbase per 24 hours, and each coinbase creates exactly 7,200 new cookie tokens.
+
+#### Transition from version 4.0
+
+You might be wondering how the coworkers updated from the old spreadsheet—as it was in release 4.0—to the one that contains transactions. What happened to the already-existing cookie tokens in the spreadsheet?
+
+They all agreed on a time slot when the upgrade would take place. During this time slot, Lisa created a single, huge transaction with one output per PKH in the spreadsheet. This transaction looks like a coinbase transaction but with a lot of outputs. Anyone can keep a version of the old spreadsheet and verify that this new transaction contains the exact same outputs as the old UTXO set. New verifiers can’t be sure it went well, though—they’ll have to trust Lisa with that.
+
+Note that this isn’t at all how it happened in Bitcoin, which was designed for transactions from the beginning. The “initial state” in Bitcoin was an empty UTXO set. No one had any bitcoins.
+
+### Trust in Lisa
+
+In this chapter, we’ve formalized the payment process—for example, the transaction from the wallet must be sent as an attachment in an email to Lisa. Lisa can take advantage of this formal process to automate all her work. She writes a computer program that reads transactions from her email inbox and automatically verifies them, maintains the UTXO set, and adds transactions to the spreadsheet. Lisa can relax and just watch her computer program do the job for her. Nice.
+
+But now you may wonder if she’s still worth the 7,200 CT per day in rewards. She doesn’t work actively with verification anymore; she’s just sitting there, twiddling her thumbs. Let’s take a moment to reflect on what we’re rewarding her for. She’s rewarded not to perform boring manual work but to perform correct, honest confirmations of transactions and not censor them. That’s what gives you and your coworkers value. If Lisa writes a computer program to do the heavy lifting, it doesn’t make the payment processing less correct or honest.
+
+![We trust that Lisa doesn’t ...](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/common-02.jpg)
+
+- Censor transactions
+- Revert transactions
+
+Transactions solve the problem with Lisa arbitrarily changing stuff in the spreadsheet. The only things you have to trust Lisa with now are to
+
+- *Not censor transactions*—She must add to the spreadsheet any valid transactions that she receives over email.
+- *Not revert transactions*—To *revert* a transaction is to remove it from the spreadsheet.
+
+If Lisa decides she doesn’t like Faiza, and she also happens to know some of Faiza’s UTXOs, she can refuse to process Faiza’s transactions that try to spend those UTXOs. This means Faiza can’t spend her money. Lisa is censoring Faiza’s transactions.
+
+If Lisa removes a transaction, whose outputs are all unspent, from the spreadsheet, it *might* be noticed by already-running verifiers. But verifiers that started after the reverting won’t notice because the spreadsheet is still valid according to the rules.
+
+Suppose Lisa reverts John’s transaction from the “[Paying using a transaction](/book/grokking-bitcoin/chapter-5/ch05lev1sec2)” section. Lisa removes John’s transaction from the spreadsheet. No one has spent any of the outputs of John’s transaction yet, so the spreadsheet doesn’t contain any transactions that become invalid when John’s transaction is deleted.
+
+An already-running verifier—for example, the cafe—won’t notice because it just watches the spreadsheet for added transactions at the end. It has already verified John’s transaction and updated its private UTXO set. The cafe trusts Lisa to not delete transactions, so it never re-verifies the spreadsheet
+
+Furthermore, suppose a new coworker, Vera, starts to build her own UTXO set from the spreadsheet, which now lacks John’s transaction. This UTXO set will differ from the cafe’s UTXO set. From Vera’s viewpoint, John still has the money and hasn’t paid 10 CT to the cafe. The outputs that John spent in his transaction appear unspent to Vera because they’re in Vera’s UTXO set.
+
+We now have Vera, who thinks John still has the money; Lisa, who deleted the transaction; and the cafe, which thinks it got 10 CT from John. So far, no one has noticed Lisa’s crime. It will remain unnoticed as long as nobody tries to spend an output from John’s transaction. This could be the cafe spending its 10 CT or John spending his 3 CT change.
+
+Let’s say the cafe wants to pay its rent to the company. It needs to spend, among other outputs, the output of John’s transaction. The cafe creates a transaction that spends the output, signs it, and sends it to Lisa. Lisa knows she’s deleted John’s transaction and her crime will now be noticed. If Lisa decides to confirm the cafe’s transaction, then she’ll make the entire spreadsheet invalid, and Vera and all other verifiers will reject the spreadsheet as a whole. Not good. If Lisa decides to reject the transaction, which is the more sensible thing for her to do, the cafe will notice because its transaction never confirms.
+
+When the cafe notices, it can’t prove that John’s transaction was ever in the spreadsheet. Lisa can’t prove that John’s transaction was never in the spreadsheet. It’s word against word. We’ll solve this problem in [chapter 6](/book/grokking-bitcoin/chapter-6/ch06).
+
+It isn’t obvious why Lisa would delete John’s transaction. Maybe John pays Lisa to do it. It would probably make more sense for Lisa to cheat with her own money instead. Let’s say she buys a cookie in the cafe, and when the cafe has seen the transaction from Lisa to the cafe in the spreadsheet, it gives a cookie to Lisa. Yummy. Then Lisa walks back to her desk and removes her transaction. Now she’s got a cookie *and* she gets to keep the money. This will, of course, be noticed when the cafe tries to spend the output from the removed transaction or the next time Lisa tries to double-spend the outputs spent by the removed transaction. But as with John’s transaction, it’s word against word. Lisa can claim the transaction was never in the spreadsheet, and the cafe can claim it was. No one can prove anything.
+
+### Recap
+
+Transactions make it impossible for Lisa to steal cookie tokens from others. They solve the problem by making all signatures public in the spreadsheet. Users’ wallets create and sign transactions that Lisa verifies and appends to the spreadsheet.
+
+![](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/f0157-01_alt.jpg)
+
+Transactions have inputs and outputs. An output of a transaction contains the last part of a Script program. When the output is spent, the input that’s spending the output must provide the first part of the program.
+
+![](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/f0157-02_alt.jpg)
+
+Lisa runs the program. If the program ends with `OK`, then the spending of *that* output is authorized. If the programs of all inputs in a transaction end with `OK`, the entire transaction is valid, and Lisa adds the transaction to the spreadsheet.
+
+Once the transaction is in the spreadsheet, anyone can make the exact same checks as Lisa did, because she added the transaction to the spreadsheet exactly as she received it. If Lisa makes changes to it, people will notice that the spreadsheet is no longer valid because it contains an invalid transaction. The only things you can’t verify are if transactions are being censored (not added to the spreadsheet) or deleted from the spreadsheet. You have to trust Lisa with these two things for now.
+
+![](https://drek4537l1klr.cloudfront.net/rosenbaum/Figures/f0158-01.jpg)
+
+#### System changes
+
+Transactions and txid have been added to your toolbox. The concept-mapping table ([table 5.1](/book/grokking-bitcoin/chapter-5/ch05table01)) shrinks by two rows: emails to Lisa and rows in the spreadsheet are replaced by transactions. Note that you still use email to send the transaction to Lisa, but the transaction has the same format as in Bitcoin. This is why we can remove the row.
+
+##### Table 5.1. Transactions replace emails to Lisa and rows in the spreadsheet.[(view table figure)](https://drek4537l1klr.cloudfront.net/rosenbaum/HighResolutionFigures/table_5-1.png)
+
+| Cookie tokens | Bitcoin | Covered in |
+| --- | --- | --- |
+| 1 cookie token | 1 bitcoin | [Chapter 2](/book/grokking-bitcoin/chapter-2/ch02) |
+| The spreadsheet | The blockchain | [Chapter 6](/book/grokking-bitcoin/chapter-6/ch06) |
+| *Email to Lisa* | *A transaction* | *[Chapter 5](/book/grokking-bitcoin/chapter-5/ch05)* |
+| *A row in the spreadsheet* | *A transaction* | *[Chapter 5](/book/grokking-bitcoin/chapter-5/ch05)* |
+| Lisa | A miner | [Chapter 7](/book/grokking-bitcoin/chapter-7/ch07) |
+
+The next chapter will take care of replacing the spreadsheet, which now contains transactions, with a blockchain.
+
+Let’s release version 5.0 of the cookie token system ([table 5.2](/book/grokking-bitcoin/chapter-5/ch05table02)).
+
+##### Table 5.2. Release notes, cookie tokens 5.0[(view table figure)](https://drek4537l1klr.cloudfront.net/rosenbaum/HighResolutionFigures/table_5-2.png)
+
+| Version | Feature | How |
+| --- | --- | --- |
+|  | Spend multiple “coins” in one payment | Multiple inputs in transactions |
+| Anyone can verify the spreadsheet | Make the signatures publicly available in the transactions |  |
+| Sender decides on criteria for spending the money | Script programs inside transactions |  |
+| 4.0 | Easy to make payments and create new addresses | Mobile app “wallet” |
+| Simplified backups | HD wallets are generated from a seed. Only the seed, 12 to 24 English words, needs to be backed up. |  |
+| Creating addresses in insecure environments | HD wallets can generate public key trees without ever seeing any of the private keys |  |
+| 3.0 | Safe from expensive typing errors | Cookie token addresses |
+| Privacy improvements | A PKH is stored in the spreadsheet instead of a personal name. |  |
+
+### Exercises
+
+#### Warm up
+
+**[5.1](/book/grokking-bitcoin/appendix-b/app02qa6q0a1)**
+
+Suppose all your money is spread over three UTXOs: one with 4 CT, one with 7 CT, and one with 2 CT. Which of these outputs would you spend if you wanted to buy a cookie for 10 CT? What outputs would your transaction have, and what would their CT values be?
+
+**[5.2](/book/grokking-bitcoin/appendix-b/app02qa6q0a2)**
+
+What are txids used for in a transaction?
+
+**[5.3](/book/grokking-bitcoin/appendix-b/app02qa6q0a3)**
+
+Why do you usually need to add a change output in your transaction?
+
+**[5.4](/book/grokking-bitcoin/appendix-b/app02qa6q0a4)**
+
+Where are the signatures located in a transaction?
+
+**[5.5](/book/grokking-bitcoin/appendix-b/app02qa6q0a5)**
+
+Why is the public key needed in the input of a transaction if it spends a p2pkh output?
+
+**[5.6](/book/grokking-bitcoin/appendix-b/app02qa6q0a6)**
+
+Why are the signature scripts of a transaction cleaned when your wallet signs the transaction?
+
+**[5.7](/book/grokking-bitcoin/appendix-b/app02qa6q0a7)**
+
+Where are the pubkey scripts located in a transaction, and what do they contain?
+
+**[5.8](/book/grokking-bitcoin/appendix-b/app02qa6q0a8)**
+
+What’s required from a Script program (signature script + pubkey script) for an input to be considered authentic?
+
+**[5.9](/book/grokking-bitcoin/appendix-b/app02qa6q0a9)**
+
+How can you recognize a p2sh address?
+
+#### Dig in
+
+**[5.10](/book/grokking-bitcoin/appendix-b/app02qa6q0a10)**
+
+Suppose you have 100 CT in a single output at index 7 of a transaction. You want to pay 10 CT to the cafe’s p2pkh address @C and 40 CT to Faiza, Ellen, and John’s charity’s p2sh address @FEJ. Construct a single transaction that does this. Please cheat by looking up the exact operators and program templates from this chapter. You don’t have to sign any inputs.
+
+**[5.11](/book/grokking-bitcoin/appendix-b/app02qa6q0a11)**
+
+The UTXO set contains all UTXOs. Suppose it contains 10,000 UTXOs, and you send a transaction to Lisa that has two inputs and five outputs. How many UTXOs will the UTXO set contain after the transaction has been confirmed?
+
+**[5.12](/book/grokking-bitcoin/appendix-b/app02qa6q0a12)**
+
+Create a really simple pubkey script that allows anyone to spend the output. What would the signature script of the spending input contain?
+
+**[5.13](/book/grokking-bitcoin/appendix-b/app02qa6q0a13)**
+
+Create a pubkey script that requires the spender to provide two numbers in the signature script whose sum is 10 in order to spend the money. An operator called `OP_ADD` takes the top two items from the stack and puts back the sum of those items.
+
+**[5.14](/book/grokking-bitcoin/appendix-b/app02qa6q0a14)**
+
+Suppose you run a full node and receive money from Faiza in a confirmed transaction. Can you trust that the money from Faiza is real?
+
+**[5.15](/book/grokking-bitcoin/appendix-b/app02qa6q0a15)**
+
+A public key is visible in the input that spends a p2pkh output. What’s the drawback of this if you have multiple UTXOs for the same PKH? What can you do to avoid this drawback?
+
+### Summary
+
+- Transactions have inputs and outputs, so you can spend multiple “coins” and pay multiple recipients in a single transaction.
+- The outputs of transactions are “programmable.” The sender wallet decides what program to put in the output. This dictates what’s needed to spend the money.
+- Anyone can verify the entire spreadsheet because all signatures are public. This greatly reduces trust in Lisa.
+- Scripts can be used to enable multisignature capabilities—for example, three-of-seven capabilities. This is great for companies and charities.
+- A new address type, a p2sh address beginning with `3`, is used to simplify the payment process for a lot of fancy payment types, such as multisignatures.
+- All transactions descend from one or more coinbase transactions. Coinbase transactions are the only way to create money.
+- Money creation is verified by any coworker to make sure Lisa creates exactly as much as agreed: 7,200 CT per day and halving every four years.
+- Lisa can censor and revert transactions. You still have to trust her with that.
