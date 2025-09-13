@@ -1,0 +1,1 @@
+CREATE TABLE sample_table (user_id STRING, created_date DATE, country STRING) PARTITIONED BY (created_date, country);

@@ -1,0 +1,10 @@
+{  
+  “data”: {  
+    “type”: “invoice”,  
+    “id”: “abc123”,  
+  },  
+  “links”: {  
+    “pay”: “https://api.acme.com/payment/abc123”  
+  }  
+}
+

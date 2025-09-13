@@ -1,0 +1,6 @@
+service: "service.py:svc"
+include:
+  - "service.py"
+  - "yolov8_custom.pt"
+docker:
+  base_image: "ultralytics/ultralytics:8.0.203-cpu"
